@@ -49,7 +49,7 @@ type PoolStats struct {
 }
 
 // NewPool returns a new VitessPool
-func NewPool(servers []string, maxConn int) (*Pool, error) {
+func NewPool(servers []string, capacity, maxCap int, idleTimeout time.Duration) (*Pool, error) {
 	numServers := len(servers)
 
 	pool := &Pool{
@@ -60,13 +60,16 @@ func NewPool(servers []string, maxConn int) (*Pool, error) {
 	}
 
 	for i, server := range servers {
-		pool.pool[i] = pools.NewResourcePool(func() (pools.Resource, error) {
-			c, err := memcache.Connect(server, time.Minute)
-			return VitessResource{c}, err
-		}, maxConn, maxConn, time.Minute)
+		pool.pool[i] = pools.NewResourcePool(newConnection, capacity, maxCap, idleTimeout)
 	}
 
 	return pool, nil
+}
+
+// newConnection connects to a memcached server
+func newConnection() (pools.Resource, error) {
+	c, err := memcache.Connect(server, time.Minute)
+	return VitessResource{c}, err
 }
 
 // ShardedServerStrategy implements a simple sharding using the jump algorithm
