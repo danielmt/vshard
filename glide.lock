@@ -1,0 +1,21 @@
+hash: b483002377928e3c6335f90393239dfc97bbfd61aab18367b2afebc653c01317
+updated: 2017-01-12T16:51:50.553486383-02:00
+imports:
+- name: github.com/dgryski/go-jump
+  version: 2a32a091ac42cb4220ffb377a7029e9df51953bf
+- name: github.com/golang/glog
+  version: 23def4e6c14b4da8ac2ed8007337bc5eb5007998
+- name: github.com/youtube/vitess
+  version: d429f4015ace1f1366acb28e996172dc6693515c
+  subpackages:
+  - go/acl
+  - go/cache
+  - go/cacheservice
+  - go/memcache
+  - go/pools
+  - go/sync2
+- name: golang.org/x/net
+  version: 60c41d1de8da134c05b7b40154a9a82bf5b7edb9
+  subpackages:
+  - context
+testImports: []

@@ -1,0 +1,455 @@
+// Copyright 2015, Google Inc. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+package gateway
+
+import (
+	"flag"
+	"fmt"
+	"math/rand"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+
+	log "github.com/golang/glog"
+	"golang.org/x/net/context"
+
+	"github.com/youtube/vitess/go/sqltypes"
+	"github.com/youtube/vitess/go/vt/discovery"
+	"github.com/youtube/vitess/go/vt/tabletserver/querytypes"
+	"github.com/youtube/vitess/go/vt/tabletserver/tabletconn"
+	"github.com/youtube/vitess/go/vt/topo"
+	"github.com/youtube/vitess/go/vt/vterrors"
+	"github.com/youtube/vitess/go/vt/vtgate/masterbuffer"
+
+	querypb "github.com/youtube/vitess/go/vt/proto/query"
+	topodatapb "github.com/youtube/vitess/go/vt/proto/topodata"
+	vtrpcpb "github.com/youtube/vitess/go/vt/proto/vtrpc"
+)
+
+var (
+	cellsToWatch        = flag.String("cells_to_watch", "", "comma-separated list of cells for watching tablets")
+	refreshInterval     = flag.Duration("tablet_refresh_interval", 1*time.Minute, "tablet refresh interval")
+	topoReadConcurrency = flag.Int("topo_read_concurrency", 32, "concurrent topo reads")
+)
+
+const (
+	gatewayImplementationDiscovery = "discoverygateway"
+)
+
+func init() {
+	RegisterCreator(gatewayImplementationDiscovery, createDiscoveryGateway)
+}
+
+type discoveryGateway struct {
+	hc                discovery.HealthCheck
+	topoServer        topo.Server
+	srvTopoServer     topo.SrvTopoServer
+	localCell         string
+	retryCount        int
+	tabletTypesToWait []topodatapb.TabletType
+
+	// tabletsWatchers contains a list of all the watchers we use.
+	// We create one per cell.
+	tabletsWatchers []*discovery.TopologyWatcher
+
+	// mu protects all fields below.
+	mu sync.RWMutex
+	// statusAggregators is a map indexed by the key
+	// keyspace/shard/tablet_type.
+	statusAggregators map[string]*TabletStatusAggregator
+}
+
+func createDiscoveryGateway(hc discovery.HealthCheck, topoServer topo.Server, serv topo.SrvTopoServer, cell string, retryCount int, tabletTypesToWait []topodatapb.TabletType) Gateway {
+	dg := &discoveryGateway{
+		hc:                hc,
+		topoServer:        topoServer,
+		srvTopoServer:     serv,
+		localCell:         cell,
+		retryCount:        retryCount,
+		tabletTypesToWait: tabletTypesToWait,
+		tabletsWatchers:   make([]*discovery.TopologyWatcher, 0, 1),
+		statusAggregators: make(map[string]*TabletStatusAggregator),
+	}
+	log.Infof("loading tablets for cells: %v", *cellsToWatch)
+	for _, c := range strings.Split(*cellsToWatch, ",") {
+		if c == "" {
+			continue
+		}
+		ctw := discovery.NewCellTabletsWatcher(dg.topoServer, dg.hc, c, *refreshInterval, *topoReadConcurrency)
+		dg.tabletsWatchers = append(dg.tabletsWatchers, ctw)
+	}
+	err := dg.waitForTablets()
+	if err != nil {
+		log.Errorf("createDiscoveryGateway: %v", err)
+	}
+	return dg
+}
+
+func (dg *discoveryGateway) waitForTablets() error {
+	// Skip waiting for tablets if we are not told to do so.
+	if len(dg.tabletTypesToWait) == 0 {
+		return nil
+	}
+
+	log.Infof("Waiting for tablets")
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	err := discovery.WaitForAllServingTablets(ctx, dg.hc, dg.srvTopoServer, dg.localCell, dg.tabletTypesToWait)
+	if err == discovery.ErrWaitForTabletsTimeout {
+		// ignore this error, we will still start up, and may not serve
+		// all tablets.
+		log.Warningf("Timeout when waiting for tablets")
+		err = nil
+	}
+	if err != nil {
+		log.Errorf("Error when waiting for tablets: %v", err)
+		return err
+	}
+	log.Infof("Waiting for tablets completed")
+	return nil
+}
+
+// Execute executes the non-streaming query for the specified keyspace, shard, and tablet type.
+func (dg *discoveryGateway) Execute(ctx context.Context, keyspace, shard string, tabletType topodatapb.TabletType, query string, bindVars map[string]interface{}, transactionID int64) (qr *sqltypes.Result, err error) {
+	err = dg.withRetry(ctx, keyspace, shard, tabletType, func(conn tabletconn.TabletConn) error {
+		var innerErr error
+		startTime := time.Now()
+		qr, innerErr = conn.Execute(ctx, query, bindVars, transactionID)
+		dg.updateStats(keyspace, shard, tabletType, startTime, innerErr)
+		return innerErr
+	}, transactionID, false)
+	return qr, err
+}
+
+// ExecuteBatch executes a group of queries for the specified keyspace, shard, and tablet type.
+func (dg *discoveryGateway) ExecuteBatch(ctx context.Context, keyspace, shard string, tabletType topodatapb.TabletType, queries []querytypes.BoundQuery, asTransaction bool, transactionID int64) (qrs []sqltypes.Result, err error) {
+	err = dg.withRetry(ctx, keyspace, shard, tabletType, func(conn tabletconn.TabletConn) error {
+		var innerErr error
+		startTime := time.Now()
+		qrs, innerErr = conn.ExecuteBatch(ctx, queries, asTransaction, transactionID)
+		dg.updateStats(keyspace, shard, tabletType, startTime, innerErr)
+		return innerErr
+	}, transactionID, false)
+	return qrs, err
+}
+
+// StreamExecute executes a streaming query for the specified keyspace, shard, and tablet type.
+func (dg *discoveryGateway) StreamExecute(ctx context.Context, keyspace, shard string, tabletType topodatapb.TabletType, query string, bindVars map[string]interface{}) (sqltypes.ResultStream, error) {
+	var usedConn tabletconn.TabletConn
+	var stream sqltypes.ResultStream
+	err := dg.withRetry(ctx, keyspace, shard, tabletType, func(conn tabletconn.TabletConn) error {
+		var err error
+		stream, err = conn.StreamExecute(ctx, query, bindVars)
+		usedConn = conn
+		return err
+	}, 0, true)
+	if err != nil {
+		return nil, err
+	}
+	return stream, nil
+}
+
+// Begin starts a transaction for the specified keyspace, shard, and tablet type.
+// It returns the transaction ID.
+func (dg *discoveryGateway) Begin(ctx context.Context, keyspace string, shard string, tabletType topodatapb.TabletType) (transactionID int64, err error) {
+	err = dg.withRetry(ctx, keyspace, shard, tabletType, func(conn tabletconn.TabletConn) error {
+		var innerErr error
+		startTime := time.Now()
+		transactionID, innerErr = conn.Begin(ctx)
+		dg.updateStats(keyspace, shard, tabletType, startTime, innerErr)
+		return innerErr
+	}, 0, false)
+	return transactionID, err
+}
+
+// Commit commits the current transaction for the specified keyspace, shard, and tablet type.
+func (dg *discoveryGateway) Commit(ctx context.Context, keyspace, shard string, tabletType topodatapb.TabletType, transactionID int64) error {
+	return dg.withRetry(ctx, keyspace, shard, tabletType, func(conn tabletconn.TabletConn) error {
+		startTime := time.Now()
+		innerErr := conn.Commit(ctx, transactionID)
+		dg.updateStats(keyspace, shard, tabletType, startTime, innerErr)
+		return innerErr
+	}, transactionID, false)
+}
+
+// Rollback rolls back the current transaction for the specified keyspace, shard, and tablet type.
+func (dg *discoveryGateway) Rollback(ctx context.Context, keyspace, shard string, tabletType topodatapb.TabletType, transactionID int64) error {
+	return dg.withRetry(ctx, keyspace, shard, tabletType, func(conn tabletconn.TabletConn) error {
+		startTime := time.Now()
+		innerErr := conn.Rollback(ctx, transactionID)
+		dg.updateStats(keyspace, shard, tabletType, startTime, innerErr)
+		return innerErr
+	}, transactionID, false)
+}
+
+// BeginExecute executes a begin and the non-streaming query for the
+// specified keyspace, shard, and tablet type.
+func (dg *discoveryGateway) BeginExecute(ctx context.Context, keyspace, shard string, tabletType topodatapb.TabletType, query string, bindVars map[string]interface{}) (qr *sqltypes.Result, transactionID int64, err error) {
+	err = dg.withRetry(ctx, keyspace, shard, tabletType, func(conn tabletconn.TabletConn) error {
+		var innerErr error
+		startTime := time.Now()
+		qr, transactionID, innerErr = conn.BeginExecute(ctx, query, bindVars)
+		dg.updateStats(keyspace, shard, tabletType, startTime, innerErr)
+		return innerErr
+	}, 0, false)
+	return qr, transactionID, err
+}
+
+// BeginExecuteBatch executes a begin and a group of queries for the
+// specified keyspace, shard, and tablet type.
+func (dg *discoveryGateway) BeginExecuteBatch(ctx context.Context, keyspace, shard string, tabletType topodatapb.TabletType, queries []querytypes.BoundQuery, asTransaction bool) (qrs []sqltypes.Result, transactionID int64, err error) {
+	err = dg.withRetry(ctx, keyspace, shard, tabletType, func(conn tabletconn.TabletConn) error {
+		var innerErr error
+		startTime := time.Now()
+		qrs, transactionID, innerErr = conn.BeginExecuteBatch(ctx, queries, asTransaction)
+		dg.updateStats(keyspace, shard, tabletType, startTime, innerErr)
+		return innerErr
+	}, 0, false)
+	return qrs, transactionID, err
+}
+
+// SplitQuery splits a query into sub-queries for the specified keyspace, shard, and tablet type.
+func (dg *discoveryGateway) SplitQuery(ctx context.Context, keyspace, shard string, tabletType topodatapb.TabletType, sql string, bindVariables map[string]interface{}, splitColumn string, splitCount int64) (queries []querytypes.QuerySplit, err error) {
+	err = dg.withRetry(ctx, keyspace, shard, tabletType, func(conn tabletconn.TabletConn) error {
+		var innerErr error
+		startTime := time.Now()
+		queries, innerErr = conn.SplitQuery(ctx, querytypes.BoundQuery{
+			Sql:           sql,
+			BindVariables: bindVariables,
+		}, splitColumn, splitCount)
+		dg.updateStats(keyspace, shard, tabletType, startTime, innerErr)
+		return innerErr
+	}, 0, false)
+	return
+}
+
+// SplitQuery splits a query into sub-queries for the specified keyspace, shard, and tablet type.
+// TODO(erez): Rename to SplitQuery after migration to SplitQuery V2.
+func (dg *discoveryGateway) SplitQueryV2(
+	ctx context.Context,
+	keyspace,
+	shard string,
+	tabletType topodatapb.TabletType,
+	sql string,
+	bindVariables map[string]interface{},
+	splitColumns []string,
+	splitCount int64,
+	numRowsPerQueryPart int64,
+	algorithm querypb.SplitQueryRequest_Algorithm) (queries []querytypes.QuerySplit, err error) {
+
+	err = dg.withRetry(ctx, keyspace, shard, tabletType, func(conn tabletconn.TabletConn) error {
+		var innerErr error
+		startTime := time.Now()
+		queries, innerErr = conn.SplitQueryV2(ctx, querytypes.BoundQuery{
+			Sql:           sql,
+			BindVariables: bindVariables,
+		}, splitColumns, splitCount, numRowsPerQueryPart, algorithm)
+		dg.updateStats(keyspace, shard, tabletType, startTime, innerErr)
+		return innerErr
+	}, 0, false)
+	return
+}
+
+// Close shuts down underlying connections.
+func (dg *discoveryGateway) Close(ctx context.Context) error {
+	for _, ctw := range dg.tabletsWatchers {
+		ctw.Stop()
+	}
+	return nil
+}
+
+// CacheStatus returns a list of TabletCacheStatus per
+// keyspace/shard/tablet_type.
+func (dg *discoveryGateway) CacheStatus() TabletCacheStatusList {
+	dg.mu.RLock()
+	res := make(TabletCacheStatusList, 0, len(dg.statusAggregators))
+	for _, aggr := range dg.statusAggregators {
+		res = append(res, aggr.GetCacheStatus())
+	}
+	dg.mu.RUnlock()
+	sort.Sort(res)
+	return res
+}
+
+// withRetry gets available connections and executes the action. If there are retryable errors,
+// it retries retryCount times before failing. It does not retry if the connection is in
+// the middle of a transaction. While returning the error check if it maybe a result of
+// a resharding event, and set the re-resolve bit and let the upper layers
+// re-resolve and retry.
+func (dg *discoveryGateway) withRetry(ctx context.Context, keyspace, shard string, tabletType topodatapb.TabletType, action func(conn tabletconn.TabletConn) error, transactionID int64, isStreaming bool) error {
+	var tabletLastUsed *topodatapb.Tablet
+	var err error
+	inTransaction := (transactionID != 0)
+	invalidTablets := make(map[string]bool)
+
+	for i := 0; i < dg.retryCount+1; i++ {
+		tablets := dg.getTablets(keyspace, shard, tabletType)
+		if len(tablets) == 0 {
+			// fail fast if there is no tablet
+			err = vterrors.FromError(vtrpcpb.ErrorCode_INTERNAL_ERROR, fmt.Errorf("no valid tablet"))
+			break
+		}
+		shuffleTablets(tablets)
+
+		// skip tablets we tried before
+		var tablet *topodatapb.Tablet
+		for _, t := range tablets {
+			if _, ok := invalidTablets[discovery.TabletToMapKey(t)]; !ok {
+				tablet = t
+				break
+			}
+		}
+		if tablet == nil {
+			if err == nil {
+				// do not override error from last attempt.
+				err = vterrors.FromError(vtrpcpb.ErrorCode_INTERNAL_ERROR, fmt.Errorf("no available connection"))
+			}
+			break
+		}
+
+		// execute
+		tabletLastUsed = tablet
+		conn := dg.hc.GetConnection(tablet)
+		if conn == nil {
+			err = vterrors.FromError(vtrpcpb.ErrorCode_INTERNAL_ERROR, fmt.Errorf("no connection for %+v", tablet))
+			invalidTablets[discovery.TabletToMapKey(tablet)] = true
+			continue
+		}
+
+		// Potentially buffer this request.
+		if bufferErr := masterbuffer.FakeBuffer(keyspace, shard, tabletType, inTransaction, i); bufferErr != nil {
+			return bufferErr
+		}
+
+		err = action(conn)
+		if dg.canRetry(ctx, err, transactionID, isStreaming) {
+			invalidTablets[discovery.TabletToMapKey(tablet)] = true
+			continue
+		}
+		break
+	}
+	return NewShardError(err, keyspace, shard, tabletType, tabletLastUsed, inTransaction)
+}
+
+// canRetry determines whether a query can be retried or not.
+// OperationalErrors like retry/fatal are retryable if query is not in a txn.
+// All other errors are non-retryable.
+func (dg *discoveryGateway) canRetry(ctx context.Context, err error, transactionID int64, isStreaming bool) bool {
+	if err == nil {
+		return false
+	}
+	// Do not retry if ctx.Done() is closed.
+	select {
+	case <-ctx.Done():
+		return false
+	default:
+	}
+	if serverError, ok := err.(*tabletconn.ServerError); ok {
+		switch serverError.ServerCode {
+		case vtrpcpb.ErrorCode_INTERNAL_ERROR:
+			// Do not retry on fatal error for streaming query.
+			// For streaming query, vttablet sends:
+			// - QUERY_NOT_SERVED, if streaming is not started yet;
+			// - INTERNAL_ERROR, if streaming is broken halfway.
+			// For non-streaming query, handle as QUERY_NOT_SERVED.
+			if isStreaming {
+				return false
+			}
+			fallthrough
+		case vtrpcpb.ErrorCode_QUERY_NOT_SERVED:
+			// Retry on QUERY_NOT_SERVED and
+			// INTERNAL_ERROR if not in a transaction.
+			inTransaction := (transactionID != 0)
+			return !inTransaction
+		default:
+			// Not retry for RESOURCE_EXHAUSTED and normal
+			// server errors.
+			return false
+		}
+	}
+	// Do not retry on operational error.
+	return false
+}
+
+func shuffleTablets(tablets []*topodatapb.Tablet) {
+	index := 0
+	length := len(tablets)
+	for i := length - 1; i > 0; i-- {
+		index = rand.Intn(i + 1)
+		tablets[i], tablets[index] = tablets[index], tablets[i]
+	}
+}
+
+// getTablets gets all available tablets from HealthCheck,
+// and selects the usable ones based several rules:
+// master - return one from any cells with latest reparent timestamp;
+// replica - return all from local cell.
+func (dg *discoveryGateway) getTablets(keyspace, shard string, tabletType topodatapb.TabletType) []*topodatapb.Tablet {
+	tsList := dg.hc.GetTabletStatsFromTarget(keyspace, shard, tabletType)
+	// for master, use any cells and return the one with max reparent timestamp.
+	if tabletType == topodatapb.TabletType_MASTER {
+		var maxTimestamp int64
+		var t *topodatapb.Tablet
+		for _, ts := range tsList {
+			if ts.LastError != nil || !ts.Serving {
+				continue
+			}
+			if ts.TabletExternallyReparentedTimestamp >= maxTimestamp {
+				maxTimestamp = ts.TabletExternallyReparentedTimestamp
+				t = ts.Tablet
+			}
+		}
+		if t == nil {
+			return nil
+		}
+		return []*topodatapb.Tablet{t}
+	}
+	// for non-master, use only tablets from local cell and filter by replication lag.
+	list := make([]*discovery.TabletStats, 0, len(tsList))
+	for _, ts := range tsList {
+		if ts.LastError != nil || !ts.Serving {
+			continue
+		}
+		if dg.localCell != ts.Tablet.Alias.Cell {
+			continue
+		}
+		list = append(list, ts)
+	}
+	list = discovery.FilterByReplicationLag(list)
+	tList := make([]*topodatapb.Tablet, 0, len(list))
+	for _, ts := range list {
+		tList = append(tList, ts.Tablet)
+	}
+	return tList
+}
+
+func (dg *discoveryGateway) updateStats(keyspace, shard string, tabletType topodatapb.TabletType, startTime time.Time, err error) {
+	elapsed := time.Now().Sub(startTime)
+	aggr := dg.getStatsAggregator(keyspace, shard, tabletType)
+	aggr.UpdateQueryInfo("", tabletType, elapsed, err != nil)
+}
+
+func (dg *discoveryGateway) getStatsAggregator(keyspace, shard string, tabletType topodatapb.TabletType) *TabletStatusAggregator {
+	key := fmt.Sprintf("%v/%v/%v", keyspace, shard, tabletType.String())
+
+	// get existing aggregator
+	dg.mu.RLock()
+	aggr, ok := dg.statusAggregators[key]
+	dg.mu.RUnlock()
+	if ok {
+		return aggr
+	}
+	// create a new one, but check again before the creation
+	dg.mu.Lock()
+	defer dg.mu.Unlock()
+	aggr, ok = dg.statusAggregators[key]
+	if ok {
+		return aggr
+	}
+	aggr = NewTabletStatusAggregator(keyspace, shard, tabletType, key)
+	dg.statusAggregators[key] = aggr
+	return aggr
+}

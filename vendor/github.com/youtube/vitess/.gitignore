@@ -1,0 +1,64 @@
+# Compiled Object files, Static and Dynamic libs (Shared Objects)
+*.py[cod]
+
+# For mac users
+.DS_Store
+
+# Produced by yacc
+*.output
+
+# vim files
+*.swp
+tags
+
+# Eclipse files
+.classpath
+.project
+.pydevproject
+.settings/
+
+# Godeps files
+/Godeps/_workspace/pkg
+/Godeps/_workspace/bin
+
+# Go vendored libs
+# Ideally we would match two levels deep so we can un-ignore specific repos
+# like launchpad.net/gozk, but doing that triggers a bug in "git stash".
+# As a workaround, we ignore at the domain level.
+/vendor/*/
+# We really only want to un-ignore launchpad.net/gozk,
+# because it has local, tracked changes.
+# But we can't do that because of the bug mentioned above,
+# so we un-ignore all of launchpad.net.
+!/vendor/launchpad.net/
+
+# C build dirs
+**/build
+
+# mysql build dirs
+third_party/mysql
+
+# java target files
+/java/*/target/
+/java/*/bin/
+
+# intellij files
+*.iml
+.idea
+
+## vitess.io preview site
+preview-vitess.io/
+
+# test.go output files
+_test/
+/test/stats.json
+
+# php downloaded dependencies
+/php/composer.phar
+/php/vendor
+
+# site-local example files
+/examples/kubernetes/config.sh
+
+#pom generated file
+/java/jdbc/dependency-reduced-pom.xml

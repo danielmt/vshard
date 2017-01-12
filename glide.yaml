@@ -1,0 +1,8 @@
+package: lab.decoded.io/daniel/vshard
+import:
+- package: github.com/dgryski/go-jump
+- package: github.com/youtube/vitess
+  version: 2.0.0
+  subpackages:
+  - go/memcache
+  - go/pools
