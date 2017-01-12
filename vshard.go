@@ -60,16 +60,13 @@ func NewPool(servers []string, capacity, maxCap int, idleTimeout time.Duration) 
 	}
 
 	for i, server := range servers {
-		pool.pool[i] = pools.NewResourcePool(newConnection, capacity, maxCap, idleTimeout)
+		pool.pool[i] = pools.NewResourcePool(func() (pools.Resource, error) {
+			c, err := memcache.Connect(server, time.Minute)
+			return VitessResource{c}, err
+		}, capacity, maxCap, idleTimeout)
 	}
 
 	return pool, nil
-}
-
-// newConnection connects to a memcached server
-func newConnection() (pools.Resource, error) {
-	c, err := memcache.Connect(server, time.Minute)
-	return VitessResource{c}, err
 }
 
 // ShardedServerStrategy implements a simple sharding using the jump algorithm
