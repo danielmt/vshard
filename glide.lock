@@ -1,10 +1,12 @@
-hash: b483002377928e3c6335f90393239dfc97bbfd61aab18367b2afebc653c01317
-updated: 2017-01-12T16:51:50.553486383-02:00
+hash: e82e4186fdb39ac1b6962fd108d80525914d436c5306778d7550c69b660466bd
+updated: 2017-01-12T18:25:00.740141758-02:00
 imports:
 - name: github.com/dgryski/go-jump
   version: 2a32a091ac42cb4220ffb377a7029e9df51953bf
 - name: github.com/golang/glog
   version: 23def4e6c14b4da8ac2ed8007337bc5eb5007998
+- name: github.com/stretchr/testify
+  version: 69483b4bd14f5845b5a1e55bca19e954e827f1d0
 - name: github.com/youtube/vitess
   version: d429f4015ace1f1366acb28e996172dc6693515c
   subpackages:
