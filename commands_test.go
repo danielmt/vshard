@@ -2,7 +2,6 @@ package vshard
 
 import (
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/suite"
 )
@@ -13,33 +12,11 @@ type VShardCommandsTestSuite struct {
 }
 
 func (suite *VShardCommandsTestSuite) SetupSuite() {
-	servers := []string{
-		"127.0.0.1:21210",
-		"127.0.0.1:21211",
-		"127.0.0.1:21212",
-		"127.0.0.1:21213",
-		"127.0.0.1:21214",
-		"127.0.0.1:21215",
-		"127.0.0.1:21216",
-		"127.0.0.1:21217",
-		"127.0.0.1:21218",
-		"127.0.0.1:21219",
-	}
-
-	var err error
-	suite.Pool, err = NewPool(servers, 10, 10, time.Second*5)
-	if err != nil {
-		suite.FailNow("Failure bringing pool up.", err)
-	}
+	suite.Pool = setupPool(suite.T())
 }
 
 func (suite *VShardCommandsTestSuite) TearDownTest() {
-	errs := suite.Pool.FlushAll()
-	for _, err := range errs {
-		if err != nil {
-			suite.FailNow("Failure on FlushAll", err)
-		}
-	}
+	tearDownPool(suite.T(), suite.Pool)
 }
 
 func (suite *VShardCommandsTestSuite) TestSetGet() {
