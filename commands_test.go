@@ -40,8 +40,8 @@ func (suite *VShardCommandsTestSuite) TestGetInexistentKey() {
 
 func (suite *VShardCommandsTestSuite) TestAdd() {
 	key := "add-key"
-	expected := "vshard-test-add"
-	ok, err := suite.Pool.Add(key, 0, 0, []byte(expected))
+	expectedValue := "vshard-test-add"
+	ok, err := suite.Pool.Add(key, 0, 0, []byte(expectedValue))
 	suite.True(ok)
 	suite.NoError(err)
 
