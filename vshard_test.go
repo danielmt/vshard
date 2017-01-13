@@ -13,8 +13,6 @@ type VShardTestSuite struct {
 }
 
 func (suite *VShardTestSuite) SetupSuite() {
-	// All methods that begin with "Test" are run as tests within a
-	// suite.
 	servers := []string{
 		"127.0.0.1:21210",
 		"127.0.0.1:21211",
@@ -36,37 +34,18 @@ func (suite *VShardTestSuite) SetupSuite() {
 }
 
 func (suite *VShardTestSuite) TearDownTest() {
-	// errs := suite.Pool.FlushAll()
-	// for _, err := range errs {
-	// 	if err != nil {
-	// 		suite.FailNow("Failure on FlushAll", err)
-	// 	}
-	// }
+	errs := suite.Pool.FlushAll()
+	for _, err := range errs {
+		if err != nil {
+			suite.FailNow("Failure on FlushAll", err)
+		}
+	}
 }
 
 func (suite *VShardTestSuite) TestNumberOfServers() {
 	suite.Equal(10, suite.Pool.numServers)
 	suite.Len(suite.Pool.Servers, 10)
 	suite.Len(suite.Pool.pool, 10)
-}
-
-func (suite *VShardTestSuite) TestSetGet() {
-	key := "x"
-	expected := "hello-test"
-	ok, err := suite.Pool.Set(key, 0, 0, []byte(expected))
-	suite.True(ok)
-	suite.NoError(err)
-
-	value, err := suite.Pool.Get(key)
-	suite.NoError(err)
-	suite.Equal(expected, string(value))
-}
-
-func (suite *VShardTestSuite) TestGetInexistantKey() {
-	key := "key-do-not-exist"
-	value, err := suite.Pool.Get(key)
-	suite.Equal(ErrKeyNotFound, err)
-	suite.Empty(value)
 }
 
 func (suite *VShardTestSuite) TestStatus() {
