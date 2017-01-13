@@ -38,6 +38,23 @@ func (suite *VShardCommandsTestSuite) TestGetInexistentKey() {
 	suite.Empty(value)
 }
 
+func (suite *VShardCommandsTestSuite) TestAdd() {
+	key := "add-key"
+	expected := "vshard-test-add"
+	ok, err := suite.Pool.Add(key, 0, 0, []byte(expected))
+	suite.True(ok)
+	suite.NoError(err)
+
+	newValue := "this-should-not-work"
+	ok, err = suite.Pool.Add(key, 0, 0, []byte(newValue))
+	suite.False(ok)
+	suite.NoError(err)
+
+	value, err := suite.Pool.Get(key)
+	suite.NoError(err)
+	suite.Equal(expected, string(value))
+}
+
 func TestVShardCommandsTestSuite(t *testing.T) {
 	suite.Run(t, new(VShardCommandsTestSuite))
 }
