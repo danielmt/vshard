@@ -20,15 +20,15 @@ func (suite *VShardCommandsTestSuite) TearDownTest() {
 }
 
 func (suite *VShardCommandsTestSuite) TestSetGet() {
-	key := "x"
-	expected := "hello-test"
-	ok, err := suite.Pool.Set(key, 0, 0, []byte(expected))
+	key := "get-set-key"
+	expectedValue := "hello-test"
+	ok, err := suite.Pool.Set(key, 0, 0, []byte(expectedValue))
 	suite.True(ok)
 	suite.NoError(err)
 
 	value, err := suite.Pool.Get(key)
 	suite.NoError(err)
-	suite.Equal(expected, string(value))
+	suite.Equal(expectedValue, string(value))
 }
 
 func (suite *VShardCommandsTestSuite) TestGetInexistentKey() {
