@@ -138,6 +138,53 @@ func (suite *VShardCommandsTestSuite) TestDelete() {
 	suite.Equal("", string(value))
 }
 
+func (suite *VShardCommandsTestSuite) TestFlushAll() {
+	key := "flush-key"
+	expectedValue := "hello-test"
+	ok, err := suite.Pool.Set(key, 0, 0, []byte(expectedValue))
+	suite.True(ok)
+	suite.NoError(err)
+
+	value, err := suite.Pool.Get(key)
+	suite.NoError(err)
+	suite.Equal(expectedValue, string(value))
+
+	errs := suite.Pool.FlushAll()
+	for _, err := range errs {
+		suite.NoError(err)
+	}
+
+	value, err = suite.Pool.Get(key)
+	suite.EqualError(err, ErrKeyNotFound.Error())
+	suite.Equal("", string(value))
+}
+
+func (suite *VShardCommandsTestSuite) TestCasFailure() {
+	key := "cas-key"
+	expectedValue := "hello-test"
+	ok, err := suite.Pool.Set(key, 0, 0, []byte(expectedValue))
+	suite.True(ok)
+	suite.NoError(err)
+
+	value, err := suite.Pool.Gets(key)
+	suite.NoError(err)
+	suite.Equal(expectedValue, string(value[0].Value))
+
+	newValue := "updated-value"
+	ok, err = suite.Pool.Set(key, 0, 0, []byte(newValue))
+	suite.True(ok)
+	suite.NoError(err)
+
+	casValue := "cas-value"
+	ok, err = suite.Pool.Cas(key, 0, 0, []byte(casValue), value[0].Cas)
+	suite.False(ok, "Update should have failed")
+	suite.NoError(err)
+
+	afterCasValue, err := suite.Pool.Get(key)
+	suite.NoError(err)
+	suite.Equal(newValue, string(afterCasValue), "Should have the second Set() value, not Cas() value")
+}
+
 func TestVShardCommandsTestSuite(t *testing.T) {
 	suite.Run(t, new(VShardCommandsTestSuite))
 }
