@@ -114,6 +114,30 @@ func (suite *VShardCommandsTestSuite) TestPrepend() {
 	suite.Equal(prependValue+initialValue, string(value))
 }
 
+func (suite *VShardCommandsTestSuite) TestDelete() {
+	key := "delete-key"
+	expectedValue := "hello-test"
+	ok, err := suite.Pool.Set(key, 0, 0, []byte(expectedValue))
+	suite.True(ok)
+	suite.NoError(err)
+
+	value, err := suite.Pool.Get(key)
+	suite.NoError(err)
+	suite.Equal(expectedValue, string(value))
+
+	ok, err = suite.Pool.Delete(key)
+	suite.True(ok)
+	suite.NoError(err)
+
+	ok, err = suite.Pool.Delete(key)
+	suite.False(ok)
+	suite.NoError(err)
+
+	value, err = suite.Pool.Get(key)
+	suite.EqualError(err, ErrKeyNotFound.Error())
+	suite.Equal("", string(value))
+}
+
 func TestVShardCommandsTestSuite(t *testing.T) {
 	suite.Run(t, new(VShardCommandsTestSuite))
 }
