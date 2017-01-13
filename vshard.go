@@ -60,10 +60,12 @@ func NewPool(servers []string, capacity, maxCap int, idleTimeout time.Duration) 
 	}
 
 	for i, server := range servers {
-		pool.pool[i] = pools.NewResourcePool(func() (pools.Resource, error) {
-			c, err := memcache.Connect(server, time.Minute)
-			return VitessResource{c}, err
-		}, capacity, maxCap, idleTimeout)
+		func(_server string) {
+			pool.pool[i] = pools.NewResourcePool(func() (pools.Resource, error) {
+				c, err := memcache.Connect(_server, time.Minute)
+				return VitessResource{c}, err
+			}, capacity, maxCap, idleTimeout)
+		}(server)
 	}
 
 	return pool, nil
@@ -101,6 +103,7 @@ func (v *Pool) GetConnection(key string) (*VitessResource, int, error) {
 // GetPoolConnection returns a connection from a specific pool number
 func (v *Pool) GetPoolConnection(poolNum int) (*VitessResource, error) {
 	ctx := context.Background()
+
 	resource, err := v.pool[poolNum].Get(ctx)
 	if err != nil {
 		return nil, err
