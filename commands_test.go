@@ -116,7 +116,7 @@ func (suite *VShardCommandsTestSuite) TestPrepend() {
 
 func (suite *VShardCommandsTestSuite) TestDelete() {
 	key := "delete-key"
-	expectedValue := "hello-test"
+	expectedValue := "delete-test"
 	ok, err := suite.Pool.Set(key, 0, 0, []byte(expectedValue))
 	suite.True(ok)
 	suite.NoError(err)
@@ -160,8 +160,8 @@ func (suite *VShardCommandsTestSuite) TestFlushAll() {
 }
 
 func (suite *VShardCommandsTestSuite) TestCasFailure() {
-	key := "cas-key"
-	expectedValue := "hello-test"
+	key := "cas-failure-key"
+	expectedValue := "set-before-cas-test"
 	ok, err := suite.Pool.Set(key, 0, 0, []byte(expectedValue))
 	suite.True(ok)
 	suite.NoError(err)
@@ -183,6 +183,27 @@ func (suite *VShardCommandsTestSuite) TestCasFailure() {
 	afterCasValue, err := suite.Pool.Get(key)
 	suite.NoError(err)
 	suite.Equal(newValue, string(afterCasValue), "Should have the second Set() value, not Cas() value")
+}
+
+func (suite *VShardCommandsTestSuite) TestCasSuccess() {
+	key := "cas-success-key"
+	expectedValue := "set-before-cas-test2"
+	ok, err := suite.Pool.Set(key, 0, 0, []byte(expectedValue))
+	suite.True(ok)
+	suite.NoError(err)
+
+	value, err := suite.Pool.Gets(key)
+	suite.NoError(err)
+	suite.Equal(expectedValue, string(value[0].Value))
+
+	casValue := "cas-value"
+	ok, err = suite.Pool.Cas(key, 0, 0, []byte(casValue), value[0].Cas)
+	suite.True(ok, "Update should have worked, there was no Set() after Gets()")
+	suite.NoError(err)
+
+	afterCasValue, err := suite.Pool.Get(key)
+	suite.NoError(err)
+	suite.Equal(casValue, string(afterCasValue), "Should have the Cas() value")
 }
 
 func TestVShardCommandsTestSuite(t *testing.T) {
