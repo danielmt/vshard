@@ -1,6 +1,6 @@
 test: memcached_stop memcached_start
 	@echo "Starting tests.."
-	@go test $(glide novendor) -v
+	@go test $(glide novendor) -v -cover
 	@make -s memcached_stop
 
 memcached_start:
