@@ -2,6 +2,8 @@ package main
 
 import (
 	"bufio"
+	"crypto/md5"
+	"encoding/hex"
 	"fmt"
 	"log"
 	"os"
@@ -9,7 +11,7 @@ import (
 	"lab.decoded.io/daniel/vshard"
 )
 
-const numServers = 5
+const numServers = 7
 
 var (
 	serverDistributionMD5      [numServers]int
@@ -32,17 +34,59 @@ func readLines(path string) ([]string, error) {
 	}
 	return lines, scanner.Err()
 }
+func GenerateKeyHash(key string) string {
+	hash := md5.Sum([]byte(key))
+	return hex.EncodeToString(hash[:])
+}
+
+func GetDist(data [numServers]int, evenDistribution int) {
+	for n, result := range data {
+		diff := 0
+		plus := true
+
+		if result > evenDistribution {
+			diff = result - evenDistribution
+		} else {
+			diff = evenDistribution - result
+			plus = false
+		}
+
+		percent := diff / evenDistribution * 100
+
+		if !plus {
+			diff = -diff
+		}
+
+		fmt.Printf("%d: %d (%d / %d%%)\n", n, result, diff, percent)
+	}
+}
 
 func main() {
 	lines, err := readLines("keys.txt")
 	if err != nil {
 		log.Fatalf("readLines: %s", err)
 	}
+
+	numberOfLines := 0
+
 	for _, line := range lines {
-		serverDistributionMD5[vshard.ShardedServerStrategyMD5(line, numServers)]++
-		serverDistributionFarmhash[vshard.ShardedServerStrategyFarmhash(line, numServers)]++
+		numberOfLines++
+		hexHash := GenerateKeyHash(line)
+		serverDistributionMD5[vshard.ShardedServerStrategyMD5(hexHash, numServers)]++
+		serverDistributionFarmhash[vshard.ShardedServerStrategyFarmhash(hexHash, numServers)]++
 	}
 
-	fmt.Printf("MD5: %#v\n", serverDistributionMD5)
-	fmt.Printf("Farmhash: %#v\n", serverDistributionFarmhash)
+	evenDistribution := numberOfLines / numServers
+
+	fmt.Printf("results:\n\n")
+	fmt.Printf("* MD5: %#v\n", serverDistributionMD5)
+
+	GetDist(serverDistributionMD5, evenDistribution)
+
+	fmt.Printf("\n* Farmhash: %#v\n", serverDistributionFarmhash)
+
+	GetDist(serverDistributionFarmhash, evenDistribution)
+
+	fmt.Printf("\neven distribution: %d\n\n", evenDistribution)
+
 }
