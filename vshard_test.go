@@ -43,6 +43,16 @@ func (suite *VShardTestSuite) TestStatus() {
 	}
 }
 
+func (suite *VShardTestSuite) testMD5Sharding(key string, poolNum int) {
+	actualPoolNum := ShardedServerStrategyMD5(key, 10)
+	suite.Equal(poolNum, actualPoolNum)
+}
+
+func (suite *VShardTestSuite) testFarmhashSharding(key string, poolNum int) {
+	actualPoolNum := ShardedServerStrategyFarmhash(key, 10)
+	suite.Equal(poolNum, actualPoolNum)
+}
+
 func (suite *VShardTestSuite) testShardingDistribution(key, value string, poolNum int) {
 	ok, err := suite.Pool.Set(key, 0, 0, []byte(value))
 
@@ -76,6 +86,79 @@ func (suite *VShardTestSuite) TestShardingDistribution() {
 	suite.testShardingDistribution("a", "test-server-10", 9)
 }
 
+func (suite *VShardTestSuite) TestMD5Sharding() {
+	suite.testMD5Sharding("f", 0)
+	suite.testMD5Sharding("o", 1)
+	suite.testMD5Sharding("d", 2)
+	suite.testMD5Sharding("e", 3)
+	suite.testMD5Sharding("b", 4)
+	suite.testMD5Sharding("g", 5)
+	suite.testMD5Sharding("p", 6)
+	suite.testMD5Sharding("c", 7)
+	suite.testMD5Sharding("l", 8)
+	suite.testMD5Sharding("a", 9)
+}
+
+func (suite *VShardTestSuite) TestFarmhashSharding() {
+	suite.testFarmhashSharding("f", 0)
+	suite.testFarmhashSharding("m", 1)
+	suite.testFarmhashSharding("5", 2)
+	suite.testFarmhashSharding("l", 3)
+	suite.testFarmhashSharding("h", 4)
+	suite.testFarmhashSharding("d", 5)
+	suite.testFarmhashSharding("a", 6)
+	suite.testFarmhashSharding("za", 7)
+	suite.testFarmhashSharding("i", 8)
+	suite.testFarmhashSharding("b", 9)
+}
+
 func TestVShardTestSuite(t *testing.T) {
 	suite.Run(t, new(VShardTestSuite))
+}
+
+// from fib_test.go
+func BenchmarkGetKeyMappingMD5(b *testing.B) {
+	servers := []string{"0"}
+	pool := Pool{
+		Servers:        servers,
+		ServerStrategy: ShardedServerStrategyMD5,
+		numServers:     len(servers),
+	}
+	keys := []string{"0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
+		"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z",
+		"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"}
+
+	// run the Fib function b.N times
+	for n := 0; n < b.N; n++ {
+		_ = pool.GetKeyMapping(keys...)
+	}
+}
+
+func BenchmarkGetKeyMapping2(b *testing.B) {
+	servers := []string{"0"}
+	pool := Pool{
+		Servers:        servers,
+		ServerStrategy: ShardedServerStrategyFarmhash,
+		numServers:     len(servers),
+	}
+	keys := []string{"0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
+		"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z",
+		"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"}
+
+	// run the Fib function b.N times
+	for n := 0; n < b.N; n++ {
+		_ = pool.GetKeyMapping2(keys...)
+	}
+}
+
+func BenchmarkShardedServerStrategyMD5(b *testing.B) {
+	for n := 0; n < b.N; n++ {
+		_ = ShardedServerStrategyMD5("a", 10)
+	}
+}
+
+func BenchmarkShardedServerStrategyFarmHash(b *testing.B) {
+	for n := 0; n < b.N; n++ {
+		_ = ShardedServerStrategyFarmhash("a", 10)
+	}
 }

@@ -49,17 +49,8 @@ func (v *Pool) Get(key string) ([]byte, error) {
 // for using with CAS. Gets returns a CAS identifier with the item. If
 // the item's CAS value has changed since you Gets'ed it, it will not be stored.
 func (v *Pool) Gets(keys ...string) ([]cacheservice.Result, error) {
-	mapping := make(map[int][]string)
+	mapping := v.GetKeyMapping(keys...)
 	results := []cacheservice.Result{}
-
-	for i := 0; i < v.numServers; i++ {
-		mapping[i] = []string{}
-	}
-
-	for _, key := range keys {
-		poolNum := v.ServerStrategy(key, v.numServers)
-		mapping[poolNum] = append(mapping[poolNum], key)
-	}
 
 	for poolNum, keys := range mapping {
 		if len(keys) > 0 {
