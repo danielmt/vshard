@@ -29,3 +29,5 @@ memcached_start:
 memcached_stop:
 	@killall -9 memcached 2> /dev/null; true
 
+key_dist:
+	@go run tools/hash_distribution/main.go
