@@ -60,7 +60,7 @@ func NewPool(servers []string, capacity, maxCap int, idleTimeout time.Duration) 
 		Servers:        servers,
 		numServers:     numServers,
 		pool:           make([]*pools.ResourcePool, numServers),
-		ServerStrategy: ShardedServerStrategyMD5,
+		ServerStrategy: ShardedServerStrategyFarmhash,
 	}
 
 	for i, server := range servers {
@@ -142,20 +142,6 @@ func (v *Pool) GetKeyMapping(keys ...string) map[int][]string {
 
 	for _, key := range keys {
 		poolNum := v.ServerStrategy(key, v.numServers)
-		mapping[poolNum] = append(mapping[poolNum], key)
-	}
-
-	return mapping
-}
-
-func (v *Pool) GetKeyMapping2(keys ...string) map[int][]string {
-	mapping := make(map[int][]string)
-
-	for _, key := range keys {
-		poolNum := v.ServerStrategy(key, v.numServers)
-		if _, ok := mapping[poolNum]; !ok {
-			mapping[poolNum] = []string{}
-		}
 		mapping[poolNum] = append(mapping[poolNum], key)
 	}
 
