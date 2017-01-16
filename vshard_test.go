@@ -67,13 +67,18 @@ func (suite *VShardTestSuite) testShardingDistribution(key, value string, poolNu
 
 	result, err := resource.Get(key)
 	if err != nil {
-		suite.FailNow("Failure getting key", err)
+		suite.FailNow("Failure getting key", err, result)
 	}
 
-	suite.Equal(value, string(result[0].Value))
+	if suite.NotEmpty(result) {
+		suite.Equal(value, string(result[0].Value))
+	}
 }
 
-func (suite *VShardTestSuite) TestShardingDistribution() {
+func (suite *VShardTestSuite) TestShardingDistributionMD5() {
+	oldServerStrategy := suite.Pool.ServerStrategy
+	suite.Pool.ServerStrategy = ShardedServerStrategyMD5
+
 	suite.testShardingDistribution("f", "test-server-1", 0)
 	suite.testShardingDistribution("o", "test-server-2", 1)
 	suite.testShardingDistribution("d", "test-server-3", 2)
@@ -84,6 +89,26 @@ func (suite *VShardTestSuite) TestShardingDistribution() {
 	suite.testShardingDistribution("c", "test-server-8", 7)
 	suite.testShardingDistribution("l", "test-server-9", 8)
 	suite.testShardingDistribution("a", "test-server-10", 9)
+
+	suite.Pool.ServerStrategy = oldServerStrategy
+}
+
+func (suite *VShardTestSuite) TestShardingDistributionFarmhash() {
+	oldServerStrategy := suite.Pool.ServerStrategy
+	suite.Pool.ServerStrategy = ShardedServerStrategyFarmhash
+
+	suite.testShardingDistribution("f", "test-server-1", 0)
+	suite.testShardingDistribution("m", "test-server-2", 1)
+	suite.testShardingDistribution("5", "test-server-3", 2)
+	suite.testShardingDistribution("l", "test-server-4", 3)
+	suite.testShardingDistribution("h", "test-server-5", 4)
+	suite.testShardingDistribution("d", "test-server-6", 5)
+	suite.testShardingDistribution("a", "test-server-7", 6)
+	suite.testShardingDistribution("za", "test-server-8", 7)
+	suite.testShardingDistribution("i", "test-server-9", 8)
+	suite.testShardingDistribution("b", "test-server-10", 9)
+
+	suite.Pool.ServerStrategy = oldServerStrategy
 }
 
 func (suite *VShardTestSuite) TestMD5Sharding() {
@@ -134,7 +159,7 @@ func BenchmarkGetKeyMappingMD5(b *testing.B) {
 	}
 }
 
-func BenchmarkGetKeyMapping2(b *testing.B) {
+func BenchmarkGetKeyMappingFarmhash(b *testing.B) {
 	servers := []string{"0"}
 	pool := Pool{
 		Servers:        servers,
@@ -147,7 +172,7 @@ func BenchmarkGetKeyMapping2(b *testing.B) {
 
 	// run the Fib function b.N times
 	for n := 0; n < b.N; n++ {
-		_ = pool.GetKeyMapping2(keys...)
+		_ = pool.GetKeyMapping(keys...)
 	}
 }
 
