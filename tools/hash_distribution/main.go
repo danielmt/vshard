@@ -8,7 +8,7 @@ import (
 	"log"
 	"os"
 
-	"lab.decoded.io/daniel/vshard"
+	"github.com/danielmt/vshard"
 )
 
 const numServers = 7

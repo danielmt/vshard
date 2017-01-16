@@ -1,4 +1,4 @@
-package: lab.decoded.io/daniel/vshard
+package: github.com/danielmt/vshard
 import:
 - package: github.com/dgryski/go-jump
 - package: github.com/youtube/vitess
