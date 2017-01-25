@@ -5,6 +5,7 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"errors"
+	"log"
 	"math/big"
 	"time"
 
@@ -69,6 +70,12 @@ func NewPool(servers []string, capacity, maxCap int, idleTimeout time.Duration) 
 				c, err := memcache.Connect(_server, time.Minute)
 				return VitessResource{c}, err
 			}, capacity, maxCap, idleTimeout)
+
+			conn, err := pool.GetPoolConnection(i)
+			defer pool.ReturnConnection(i, conn)
+			if err != nil {
+				log.Fatalf("Can't connect to memcached: %s", err)
+			}
 		}(server)
 	}
 
