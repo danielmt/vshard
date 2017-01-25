@@ -1,7 +1,13 @@
-test: memcached_stop memcached_start
+test: memcached_stop memcached_start _test bench memcached_stop
+
+_test:
 	@echo "Starting tests.."
-	@go test $(glide novendor) -v -cover -bench=.
-	@make -s memcached_stop
+	@go test $(glide novendor) -v -cover -race
+	@go vet $(glide novendor)
+
+bench:
+	@echo "Starting benchmarks.."
+	@go test -run=XXX -bench=. -v
 
 memcached_start:
 	@echo "Starting memcached 1.."
