@@ -34,6 +34,7 @@ func readLines(path string) ([]string, error) {
 	}
 	return lines, scanner.Err()
 }
+
 func GenerateKeyHash(key string) string {
 	hash := md5.Sum([]byte(key))
 	return hex.EncodeToString(hash[:])
@@ -41,7 +42,7 @@ func GenerateKeyHash(key string) string {
 
 func GetDist(data [numServers]int, evenDistribution int) {
 	for n, result := range data {
-		diff := 0
+		var diff int
 		plus := true
 
 		if result > evenDistribution {
@@ -88,5 +89,4 @@ func main() {
 	GetDist(serverDistributionFarmhash, evenDistribution)
 
 	fmt.Printf("\neven distribution: %d\n\n", evenDistribution)
-
 }
