@@ -60,23 +60,23 @@ func NewPool(servers []string, capacity, maxCap int, idleTimeout time.Duration) 
 	pool := &Pool{
 		Servers:        servers,
 		numServers:     numServers,
-		pool:           make([]*pools.ResourcePool, numServers),
+		pool:           []*pools.ResourcePool{},
 		ServerStrategy: ShardedServerStrategyFarmhash,
 	}
 
 	for i, server := range servers {
-		func(_server string) {
-			pool.pool[i] = pools.NewResourcePool(func() (pools.Resource, error) {
+		func(_pool *[]*pools.ResourcePool, _server string) {
+			*_pool = append(*_pool, pools.NewResourcePool(func() (pools.Resource, error) {
 				c, err := memcache.Connect(_server, time.Minute)
 				return VitessResource{c}, err
-			}, capacity, maxCap, idleTimeout)
+			}, capacity, maxCap, idleTimeout))
 
 			conn, err := pool.GetPoolConnection(i)
 			defer pool.ReturnConnection(i, conn)
 			if err != nil {
 				log.Fatalf("Can't connect to memcached: %s", err)
 			}
-		}(server)
+		}(&pool.pool, server)
 	}
 
 	return pool, nil
