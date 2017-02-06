@@ -7,6 +7,8 @@ import (
 	"errors"
 	"log"
 	"math/big"
+	"strconv"
+	"sync"
 	"time"
 
 	farm "github.com/dgryski/go-farm"
@@ -28,6 +30,9 @@ type VitessResource struct {
 // ServerStrategy defines the signature for the sharding function
 type ServerStrategy func(key string, numServers int) int
 
+// HashKeyStrategy defines the signature for the key hashing function
+type HashKeyStrategy func(key string) string
+
 // Close closes connections in a pool
 func (r VitessResource) Close() {
 	r.Connection.Close()
@@ -35,10 +40,12 @@ func (r VitessResource) Close() {
 
 // Pool defines the pool
 type Pool struct {
-	Servers        []string
-	ServerStrategy ServerStrategy
-	numServers     int
-	pool           []*pools.ResourcePool
+	Servers         []string
+	ServerStrategy  ServerStrategy
+	HashKeyStrategy HashKeyStrategy
+	numServers      int
+	pool            []*pools.ResourcePool
+	sync.RWMutex
 }
 
 // PoolStats defines all stats vitess memcached driver exposes
@@ -58,25 +65,28 @@ func NewPool(servers []string, capacity, maxCap int, idleTimeout time.Duration) 
 	numServers := len(servers)
 
 	pool := &Pool{
-		Servers:        servers,
-		numServers:     numServers,
-		pool:           []*pools.ResourcePool{},
-		ServerStrategy: ShardedServerStrategyFarmhash,
+		Servers:         servers,
+		numServers:      numServers,
+		pool:            []*pools.ResourcePool{},
+		ServerStrategy:  ShardedServerStrategyFarmhash,
+		HashKeyStrategy: HashKeyStrategyFarmhash,
 	}
 
 	for i, server := range servers {
-		func(_pool *[]*pools.ResourcePool, _server string) {
-			*_pool = append(*_pool, pools.NewResourcePool(func() (pools.Resource, error) {
+		func(_pool *Pool, _server string) {
+			_pool.Lock()
+			_pool.pool = append(_pool.pool, pools.NewResourcePool(func() (pools.Resource, error) {
 				c, err := memcache.Connect(_server, time.Minute)
 				return VitessResource{c}, err
 			}, capacity, maxCap, idleTimeout))
+			_pool.Unlock()
 
 			conn, err := pool.GetPoolConnection(i)
 			defer pool.ReturnConnection(i, conn)
 			if err != nil {
 				log.Fatalf("Can't connect to memcached: %s", err)
 			}
-		}(&pool.pool, server)
+		}(pool, server)
 	}
 
 	return pool, nil
@@ -104,6 +114,11 @@ func ShardedServerStrategyFarmhash(key string, numServers int) int {
 	return int(jump.Hash(farm.Fingerprint64([]byte(key)), numServers))
 }
 
+// HashKeyStrategyFarmhash uses farmhash to normalize key names for storage
+func HashKeyStrategyFarmhash(key string) string {
+	return strconv.FormatUint(farm.Fingerprint64([]byte(key)), 10)
+}
+
 // GetConnection returns a connection from the sharding pool, based on the key
 func (v *Pool) GetConnection(key string) (*VitessResource, int, error) {
 	poolNum := v.ServerStrategy(key, v.numServers)
@@ -120,7 +135,9 @@ func (v *Pool) GetConnection(key string) (*VitessResource, int, error) {
 func (v *Pool) GetPoolConnection(poolNum int) (*VitessResource, error) {
 	ctx := context.Background()
 
+	v.RLock()
 	resource, err := v.pool[poolNum].Get(ctx)
+	v.RUnlock()
 	if err != nil {
 		return nil, err
 	}
@@ -132,7 +149,13 @@ func (v *Pool) GetPoolConnection(poolNum int) (*VitessResource, error) {
 
 // ReturnConnection returns a connection to the pool
 func (v *Pool) ReturnConnection(poolNum int, resource *VitessResource) {
+	if poolNum > v.numServers || poolNum < 0 {
+		log.Fatalf("error: invalid server %d (of total %d)", poolNum, v.numServers)
+	}
+
+	v.RLock()
 	v.pool[poolNum].Put(*resource)
+	v.RUnlock()
 }
 
 // GetKeyMapping returns a mapping of server to a list of keys, useful for Gets()
@@ -145,7 +168,7 @@ func (v *Pool) GetKeyMapping(keys ...string) map[int][]string {
 
 	for _, key := range keys {
 		poolNum := v.ServerStrategy(key, v.numServers)
-		mapping[poolNum] = append(mapping[poolNum], key)
+		mapping[poolNum] = append(mapping[poolNum], v.HashKeyStrategy(key))
 	}
 
 	return mapping
