@@ -89,14 +89,10 @@ func ShardedServerStrategyMD5(key string, numServers int) int {
 	}
 
 	hash := md5.Sum([]byte(key))
-	hashHex := hex.EncodeToString(hash[:])
-
 	hashInt := big.NewInt(0)
-	hashInt.SetString(hashHex, 16)
+	hashInt.SetString(hex.EncodeToString(hash[:]), 16)
 
-	server := int(jump.Hash(hashInt.Uint64(), numServers))
-
-	return server
+	return int(jump.Hash(hashInt.Uint64(), numServers))
 }
 
 // ShardedServerStrategyFarmhash uses farmhash+jump to pick a server
