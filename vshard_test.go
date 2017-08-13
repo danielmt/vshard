@@ -54,6 +54,9 @@ func (suite *VShardTestSuite) testFarmhashSharding(key string, poolNum int) {
 }
 
 func (suite *VShardTestSuite) testShardingDistribution(key, value string, poolNum int) {
+	oldHashKeyStrategy := suite.Pool.HashKeyStrategy
+	suite.Pool.HashKeyStrategy = NoKeyStrategy
+
 	ok, err := suite.Pool.Set(key, 0, 0, []byte(value))
 
 	suite.True(ok)
@@ -73,6 +76,8 @@ func (suite *VShardTestSuite) testShardingDistribution(key, value string, poolNu
 	if suite.NotEmpty(result) {
 		suite.Equal(value, string(result[0].Value))
 	}
+
+	suite.Pool.HashKeyStrategy = oldHashKeyStrategy
 }
 
 func (suite *VShardTestSuite) TestShardingDistributionMD5() {

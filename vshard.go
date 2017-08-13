@@ -100,6 +100,11 @@ func FarmhashKeyStrategy(key string) string {
 	return strconv.FormatUint(farm.Fingerprint64([]byte(key)), 10)
 }
 
+// NoKeyStrategy doesn't hash the key
+func NoKeyStrategy(key string) string {
+	return key
+}
+
 // Start starts the pool
 func (v *Pool) Start() {
 
