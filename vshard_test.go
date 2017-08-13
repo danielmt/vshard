@@ -44,12 +44,12 @@ func (suite *VShardTestSuite) TestStatus() {
 }
 
 func (suite *VShardTestSuite) testMD5Sharding(key string, poolNum int) {
-	actualPoolNum := ShardedServerStrategyMD5(key, 10)
+	actualPoolNum := MD5ShardServerStrategy(key, 10)
 	suite.Equal(poolNum, actualPoolNum)
 }
 
 func (suite *VShardTestSuite) testFarmhashSharding(key string, poolNum int) {
-	actualPoolNum := ShardedServerStrategyFarmhash(key, 10)
+	actualPoolNum := FarmhashShardServerStrategy(key, 10)
 	suite.Equal(poolNum, actualPoolNum)
 }
 
@@ -77,7 +77,7 @@ func (suite *VShardTestSuite) testShardingDistribution(key, value string, poolNu
 
 func (suite *VShardTestSuite) TestShardingDistributionMD5() {
 	oldServerStrategy := suite.Pool.ServerStrategy
-	suite.Pool.ServerStrategy = ShardedServerStrategyMD5
+	suite.Pool.ServerStrategy = MD5ShardServerStrategy
 
 	suite.testShardingDistribution("f", "test-server-1", 0)
 	suite.testShardingDistribution("o", "test-server-2", 1)
@@ -95,7 +95,7 @@ func (suite *VShardTestSuite) TestShardingDistributionMD5() {
 
 func (suite *VShardTestSuite) TestShardingDistributionFarmhash() {
 	oldServerStrategy := suite.Pool.ServerStrategy
-	suite.Pool.ServerStrategy = ShardedServerStrategyFarmhash
+	suite.Pool.ServerStrategy = FarmhashShardServerStrategy
 
 	suite.testShardingDistribution("f", "test-server-1", 0)
 	suite.testShardingDistribution("m", "test-server-2", 1)
@@ -146,7 +146,7 @@ func BenchmarkGetKeyMappingMD5(b *testing.B) {
 	servers := []string{"0"}
 	pool := Pool{
 		Servers:        servers,
-		ServerStrategy: ShardedServerStrategyMD5,
+		ServerStrategy: MD5ShardServerStrategy,
 		numServers:     len(servers),
 	}
 	keys := []string{"0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
@@ -163,7 +163,7 @@ func BenchmarkGetKeyMappingFarmhash(b *testing.B) {
 	servers := []string{"0"}
 	pool := Pool{
 		Servers:        servers,
-		ServerStrategy: ShardedServerStrategyFarmhash,
+		ServerStrategy: FarmhashShardServerStrategy,
 		numServers:     len(servers),
 	}
 	keys := []string{"0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
@@ -178,12 +178,12 @@ func BenchmarkGetKeyMappingFarmhash(b *testing.B) {
 
 func BenchmarkShardedServerStrategyMD5(b *testing.B) {
 	for n := 0; n < b.N; n++ {
-		_ = ShardedServerStrategyMD5("a", 10)
+		_ = MD5ShardServerStrategy("a", 10)
 	}
 }
 
 func BenchmarkShardedServerStrategyFarmHash(b *testing.B) {
 	for n := 0; n < b.N; n++ {
-		_ = ShardedServerStrategyFarmhash("a", 10)
+		_ = FarmhashShardServerStrategy("a", 10)
 	}
 }

@@ -24,12 +24,15 @@ func getTestServers() []string {
 }
 
 func setupPool(t assert.TestingT) *Pool {
-	pool, err := NewPool(getTestServers(), 10, 10, time.Second*5)
-	if err != nil {
-		assert.FailNow(t, "Failure bringing pool up.", err)
+	pool := Pool{
+		Servers:     getTestServers(),
+		Capacity:    10,
+		MaxCapacity: 10,
+		IdleTimeout: time.Second * 5,
 	}
+	pool.Start()
 
-	return pool
+	return &pool
 }
 
 func tearDownPool(t assert.TestingT, pool *Pool) {

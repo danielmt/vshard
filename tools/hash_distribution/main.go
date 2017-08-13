@@ -72,8 +72,8 @@ func main() {
 	for _, line := range lines {
 		numberOfLines++
 		hexHash := GenerateKeyHash(line)
-		serverDistributionMD5[vshard.ShardedServerStrategyMD5(hexHash, numServers)]++
-		serverDistributionFarmhash[vshard.ShardedServerStrategyFarmhash(hexHash, numServers)]++
+		serverDistributionMD5[vshard.MD5ShardServerStrategy(hexHash, numServers)]++
+		serverDistributionFarmhash[vshard.FarmhashShardServerStrategy(hexHash, numServers)]++
 	}
 
 	evenDistribution := numberOfLines / numServers
