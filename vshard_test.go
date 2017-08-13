@@ -150,9 +150,10 @@ func TestVShardTestSuite(t *testing.T) {
 func BenchmarkGetKeyMappingMD5(b *testing.B) {
 	servers := []string{"0"}
 	pool := Pool{
-		Servers:        servers,
-		ServerStrategy: MD5ShardServerStrategy,
-		numServers:     len(servers),
+		Servers:         servers,
+		ServerStrategy:  MD5ShardServerStrategy,
+		HashKeyStrategy: NoKeyStrategy,
+		numServers:      len(servers),
 	}
 	keys := []string{"0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
 		"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z",
@@ -167,9 +168,10 @@ func BenchmarkGetKeyMappingMD5(b *testing.B) {
 func BenchmarkGetKeyMappingFarmhash(b *testing.B) {
 	servers := []string{"0"}
 	pool := Pool{
-		Servers:        servers,
-		ServerStrategy: FarmhashShardServerStrategy,
-		numServers:     len(servers),
+		Servers:         servers,
+		ServerStrategy:  FarmhashShardServerStrategy,
+		HashKeyStrategy: NoKeyStrategy,
+		numServers:      len(servers),
 	}
 	keys := []string{"0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
 		"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z",
