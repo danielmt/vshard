@@ -112,16 +112,18 @@ func (v *Pool) Start() {
 
 	for i, server := range v.Servers {
 		func(_v *Pool, _server string, _i int) {
+			_v.Lock()
 			_v.pool = append(_v.pool, pools.NewResourcePool(func() (pools.Resource, error) {
 				c, err := memcache.Connect(_server, _v.ConnectionTimeout)
 				return VitessResource{c}, err
 			}, _v.Capacity, _v.MaxCapacity, _v.IdleTimeout))
+			_v.Unlock()
 
 			conn, err := _v.GetPoolConnection(_i)
-			defer _v.ReturnConnection(_i, conn)
 			if err != nil {
 				log.Fatalf("Can't connect to memcached %d (%s): %s", _i, _server, err)
 			}
+			_v.ReturnConnection(_i, conn)
 		}(v, server, i)
 	}
 }
