@@ -28,12 +28,12 @@ func (v *Pool) Status() []*PoolStats {
 // Get returns a key from the memcached server
 func (v *Pool) Get(key string) ([]byte, error) {
 	resource, poolNum, err := v.GetConnection(key)
-	defer v.ReturnConnection(poolNum, resource)
 	if err != nil {
 		return nil, err
 	}
+	defer v.ReturnConnection(poolNum, resource)
 
-	result, err := resource.Get(key)
+	result, err := resource.Get(v.HashKeyStrategy(key))
 	if err != nil {
 		return nil, err
 	}
@@ -55,10 +55,10 @@ func (v *Pool) Gets(keys ...string) ([]cacheservice.Result, error) {
 	for poolNum, keys := range mapping {
 		if len(keys) > 0 {
 			connection, err := v.GetPoolConnection(poolNum)
-			defer v.ReturnConnection(poolNum, connection)
 			if err != nil {
 				return nil, err
 			}
+			defer v.ReturnConnection(poolNum, connection)
 
 			result, err := connection.Gets(keys...)
 			if err != nil {
@@ -75,79 +75,79 @@ func (v *Pool) Gets(keys ...string) ([]cacheservice.Result, error) {
 // Set set the value with specified cache key.
 func (v *Pool) Set(key string, flags uint16, timeout uint64, value []byte) (bool, error) {
 	resource, poolNum, err := v.GetConnection(key)
-	defer v.ReturnConnection(poolNum, resource)
 	if err != nil {
 		return false, err
 	}
+	defer v.ReturnConnection(poolNum, resource)
 
-	return resource.Set(key, flags, timeout, value)
+	return resource.Set(v.HashKeyStrategy(key), flags, timeout, value)
 }
 
 // Add store the value only if it does not already exist.
 func (v *Pool) Add(key string, flags uint16, timeout uint64, value []byte) (bool, error) {
 	resource, poolNum, err := v.GetConnection(key)
-	defer v.ReturnConnection(poolNum, resource)
 	if err != nil {
 		return false, err
 	}
+	defer v.ReturnConnection(poolNum, resource)
 
-	return resource.Add(key, flags, timeout, value)
+	return resource.Add(v.HashKeyStrategy(key), flags, timeout, value)
 }
 
 // Replace replaces the value, only if the value already exists,
 // for the specified cache key.
 func (v *Pool) Replace(key string, flags uint16, timeout uint64, value []byte) (bool, error) {
 	resource, poolNum, err := v.GetConnection(key)
-	defer v.ReturnConnection(poolNum, resource)
 	if err != nil {
 		return false, err
 	}
+	defer v.ReturnConnection(poolNum, resource)
 
-	return resource.Replace(key, flags, timeout, value)
+	return resource.Replace(v.HashKeyStrategy(key), flags, timeout, value)
 }
 
 // Append appends the value after the last bytes in an existing item.
 func (v *Pool) Append(key string, flags uint16, timeout uint64, value []byte) (bool, error) {
 	resource, poolNum, err := v.GetConnection(key)
-	defer v.ReturnConnection(poolNum, resource)
 	if err != nil {
 		return false, err
 	}
+	defer v.ReturnConnection(poolNum, resource)
 
-	return resource.Append(key, flags, timeout, value)
+	return resource.Append(v.HashKeyStrategy(key), flags, timeout, value)
 }
 
 // Prepend prepends the value before existing value.
 func (v *Pool) Prepend(key string, flags uint16, timeout uint64, value []byte) (bool, error) {
 	resource, poolNum, err := v.GetConnection(key)
-	defer v.ReturnConnection(poolNum, resource)
 	if err != nil {
 		return false, err
 	}
+	defer v.ReturnConnection(poolNum, resource)
 
-	return resource.Prepend(key, flags, timeout, value)
+	return resource.Prepend(v.HashKeyStrategy(key), flags, timeout, value)
 }
 
 // Cas stores the value only if no one else has updated the data since you read it last.
 func (v *Pool) Cas(key string, flags uint16, timeout uint64, value []byte, cas uint64) (bool, error) {
 	resource, poolNum, err := v.GetConnection(key)
-	defer v.ReturnConnection(poolNum, resource)
 	if err != nil {
 		return false, err
 	}
+	defer v.ReturnConnection(poolNum, resource)
 
-	return resource.Cas(key, flags, timeout, value, cas)
+	return resource.Cas(v.HashKeyStrategy(key), flags, timeout, value, cas)
 }
 
 // Delete delete the value for the specified cache key.
 func (v *Pool) Delete(key string) (bool, error) {
 	resource, poolNum, err := v.GetConnection(key)
-	defer v.ReturnConnection(poolNum, resource)
 	if err != nil {
 		return false, err
 	}
+	defer v.ReturnConnection(poolNum, resource)
 
-	return resource.Delete(key)
+	return resource.Delete(v.HashKeyStrategy(key))
 }
 
 // FlushAll purges the entire cache on all servers.
@@ -156,11 +156,11 @@ func (v *Pool) FlushAll() []error {
 
 	for poolNum := range v.pool {
 		resource, err := v.GetPoolConnection(poolNum)
-		defer v.ReturnConnection(poolNum, resource)
 		if err != nil {
 			errs = append(errs, err)
 			continue
 		}
+		defer v.ReturnConnection(poolNum, resource)
 
 		err = resource.FlushAll()
 		if err != nil {

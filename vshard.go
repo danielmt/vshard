@@ -8,6 +8,7 @@ import (
 	"log"
 	"math/big"
 	"strconv"
+	"sync"
 	"time"
 
 	farm "github.com/dgryski/go-farm"
@@ -39,7 +40,7 @@ type VitessResource struct {
 // ServerStrategy defines the signature for the sharding function
 type ServerStrategy func(key string, numServers int) int
 
-// HashKeyStrategy defines the signature for the key hashing strategy
+// HashKeyStrategy defines the signature for the key hashing function
 type HashKeyStrategy func(key string) string
 
 // Close closes connections in a pool
@@ -57,6 +58,7 @@ type Pool struct {
 	HashKeyStrategy       HashKeyStrategy
 	IdleTimeout           time.Duration
 	ConnectionTimeout     time.Duration
+	sync.RWMutex
 }
 
 // PoolStats defines all stats vitess memcached driver exposes
@@ -93,7 +95,7 @@ func FarmhashShardServerStrategy(key string, numServers int) int {
 	return int(jump.Hash(farm.Fingerprint64([]byte(key)), numServers))
 }
 
-// FarmhashKeyStrategy uses farmhash to normalize key names
+// FarmhashKeyStrategy uses farmhash to normalize key names for storage
 func FarmhashKeyStrategy(key string) string {
 	return strconv.FormatUint(farm.Fingerprint64([]byte(key)), 10)
 }
@@ -159,7 +161,9 @@ func (v *Pool) GetConnection(key string) (*VitessResource, int, error) {
 func (v *Pool) GetPoolConnection(poolNum int) (*VitessResource, error) {
 	ctx := context.Background()
 
+	v.RLock()
 	resource, err := v.pool[poolNum].Get(ctx)
+	v.RUnlock()
 	if err != nil {
 		return nil, err
 	}
@@ -171,7 +175,13 @@ func (v *Pool) GetPoolConnection(poolNum int) (*VitessResource, error) {
 
 // ReturnConnection returns a connection to the pool
 func (v *Pool) ReturnConnection(poolNum int, resource *VitessResource) {
+	if poolNum > v.numServers || poolNum < 0 {
+		log.Fatalf("error: invalid server %d (of total %d)", poolNum, v.numServers)
+	}
+
+	v.RLock()
 	v.pool[poolNum].Put(*resource)
+	v.RUnlock()
 }
 
 // GetKeyMapping returns a mapping of server to a list of keys, useful for Gets()
@@ -184,7 +194,7 @@ func (v *Pool) GetKeyMapping(keys ...string) map[int][]string {
 
 	for _, key := range keys {
 		poolNum := v.ServerStrategy(key, v.numServers)
-		mapping[poolNum] = append(mapping[poolNum], key)
+		mapping[poolNum] = append(mapping[poolNum], v.HashKeyStrategy(key))
 	}
 
 	return mapping
