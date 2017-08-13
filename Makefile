@@ -1,3 +1,5 @@
+export CGO_ENABLED=1
+
 test: memcached_stop memcached_start _test bench memcached_stop
 
 _test:
