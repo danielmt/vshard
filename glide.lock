@@ -1,18 +1,16 @@
-hash: f770a9f74b103ebd7393e2fae2106e7c3d811a32a7268dd6949e391f48481fdf
-updated: 2017-01-15T18:13:49.155509784-02:00
+hash: 549c550c8f6b9344b85fad3df015b951415bef67af78ca92a3b8ab07c2c0c91a
+updated: 2017-10-26T13:35:21.429296596-02:00
 imports:
+- name: github.com/cespare/xxhash
+  version: 5c37fe3735342a2e0d01c87a907579987c8936cc
 - name: github.com/dgryski/go-farm
-  version: 83948bc0eb076b6b72c28abe5282fa8cf5240db6
+  version: e2d0fe22b456fa0a35cd883ba355ecfcf1881490
 - name: github.com/dgryski/go-jump
-  version: 3301aedc8fc5a3d5a276c7a0f28c69442c5deb12
+  version: 2a32a091ac42cb4220ffb377a7029e9df51953bf
 - name: github.com/golang/glog
   version: 23def4e6c14b4da8ac2ed8007337bc5eb5007998
 - name: github.com/stretchr/testify
   version: 69483b4bd14f5845b5a1e55bca19e954e827f1d0
-  subpackages:
-  - assert
-  - require
-  - suite
 - name: github.com/youtube/vitess
   version: d429f4015ace1f1366acb28e996172dc6693515c
   subpackages:
@@ -23,15 +21,7 @@ imports:
   - go/pools
   - go/sync2
 - name: golang.org/x/net
-  version: f2499483f923065a842d38eb4c7f1927e6fc6e6d
+  version: 4b14673ba32bee7f5ac0f990a48f033919fd418b
   subpackages:
   - context
-testImports:
-- name: github.com/davecgh/go-spew
-  version: 6d212800a42e8ab5c146b8ace3490ee17e5225f9
-  subpackages:
-  - spew
-- name: github.com/pmezard/go-difflib
-  version: d8ed2627bdf02c080bf22230dbb337003b7aba2d
-  subpackages:
-  - difflib
+testImports: []

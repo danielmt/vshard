@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cespare/xxhash"
 	farm "github.com/dgryski/go-farm"
 	jump "github.com/dgryski/go-jump"
 	"github.com/youtube/vitess/go/memcache"
@@ -21,8 +22,8 @@ var (
 	// ErrKeyNotFound defines the error mensage when key is not found on memcached
 	ErrKeyNotFound = errors.New("error: key not found")
 
-	defaultServerStrategy  = FarmhashShardServerStrategy
-	defaultHashKeyStrategy = FarmhashKeyStrategy
+	defaultServerStrategy  = XXH64ShardServerStrategy
+	defaultHashKeyStrategy = XXH64KeyStrategy
 )
 
 const (
@@ -86,6 +87,15 @@ func MD5ShardServerStrategy(key string, numServers int) int {
 	return int(jump.Hash(hashInt.Uint64(), numServers))
 }
 
+// XXH64ShardServerStrategy uses xxhash+jump to pick a server
+func XXH64ShardServerStrategy(key string, numServers int) int {
+	if numServers == 1 {
+		return 0
+	}
+
+	return int(jump.Hash(xxhash.Sum64String(key), numServers))
+}
+
 // FarmhashShardServerStrategy uses farmhash+jump to pick a server
 func FarmhashShardServerStrategy(key string, numServers int) int {
 	if numServers == 1 {
@@ -93,6 +103,11 @@ func FarmhashShardServerStrategy(key string, numServers int) int {
 	}
 
 	return int(jump.Hash(farm.Fingerprint64([]byte(key)), numServers))
+}
+
+// XXH64KeyStrategy uses xxhash XXH64 to normalize key names for storage
+func XXH64KeyStrategy(key string) string {
+	return strconv.FormatUint(xxhash.Sum64String(key), 10)
 }
 
 // FarmhashKeyStrategy uses farmhash to normalize key names for storage
@@ -107,7 +122,6 @@ func NoKeyStrategy(key string) string {
 
 // Start starts the pool
 func (v *Pool) Start() {
-
 	v.initialize()
 
 	for i, server := range v.Servers {

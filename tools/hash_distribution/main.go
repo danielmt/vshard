@@ -16,6 +16,7 @@ const numServers = 7
 var (
 	serverDistributionMD5      [numServers]int
 	serverDistributionFarmhash [numServers]int
+	serverDistributionxxHash   [numServers]int
 )
 
 // readLines reads a whole file into memory
@@ -75,18 +76,21 @@ func main() {
 		hexHash := GenerateKeyHash(line)
 		serverDistributionMD5[vshard.MD5ShardServerStrategy(hexHash, numServers)]++
 		serverDistributionFarmhash[vshard.FarmhashShardServerStrategy(hexHash, numServers)]++
+		serverDistributionxxHash[vshard.XXH64ShardServerStrategy(hexHash, numServers)]++
 	}
 
 	evenDistribution := numberOfLines / numServers
 
 	fmt.Printf("results:\n\n")
-	fmt.Printf("* MD5: %#v\n", serverDistributionMD5)
 
+	fmt.Printf("* MD5: %#v\n", serverDistributionMD5)
 	GetDist(serverDistributionMD5, evenDistribution)
 
 	fmt.Printf("\n* Farmhash: %#v\n", serverDistributionFarmhash)
-
 	GetDist(serverDistributionFarmhash, evenDistribution)
+
+	fmt.Printf("\n* XXH64: %#v\n", serverDistributionFarmhash)
+	GetDist(serverDistributionxxHash, evenDistribution)
 
 	fmt.Printf("\neven distribution: %d\n\n", evenDistribution)
 }

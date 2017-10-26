@@ -53,6 +53,11 @@ func (suite *VShardTestSuite) testFarmhashSharding(key string, poolNum int) {
 	suite.Equal(poolNum, actualPoolNum)
 }
 
+func (suite *VShardTestSuite) testXXH64Sharding(key string, poolNum int) {
+	actualPoolNum := XXH64ShardServerStrategy(key, 10)
+	suite.Equal(poolNum, actualPoolNum)
+}
+
 func (suite *VShardTestSuite) testShardingDistribution(key, value string, poolNum int) {
 	oldHashKeyStrategy := suite.Pool.HashKeyStrategy
 	suite.Pool.HashKeyStrategy = NoKeyStrategy
@@ -116,6 +121,24 @@ func (suite *VShardTestSuite) TestShardingDistributionFarmhash() {
 	suite.Pool.ServerStrategy = oldServerStrategy
 }
 
+func (suite *VShardTestSuite) TestShardingDistributionXXH64() {
+	oldServerStrategy := suite.Pool.ServerStrategy
+	suite.Pool.ServerStrategy = XXH64ShardServerStrategy
+
+	suite.testShardingDistribution("x", "test-server-1", 0)
+	suite.testShardingDistribution("h", "test-server-2", 1)
+	suite.testShardingDistribution("f", "test-server-3", 2)
+	suite.testShardingDistribution("za", "test-server-4", 3)
+	suite.testShardingDistribution("s", "test-server-5", 4)
+	suite.testShardingDistribution("5", "test-server-6", 5)
+	suite.testShardingDistribution("y", "test-server-7", 6)
+	suite.testShardingDistribution("i", "test-server-8", 7)
+	suite.testShardingDistribution("a", "test-server-9", 8)
+	suite.testShardingDistribution("xz", "test-server-10", 9)
+
+	suite.Pool.ServerStrategy = oldServerStrategy
+}
+
 func (suite *VShardTestSuite) TestMD5Sharding() {
 	suite.testMD5Sharding("f", 0)
 	suite.testMD5Sharding("o", 1)
@@ -140,6 +163,19 @@ func (suite *VShardTestSuite) TestFarmhashSharding() {
 	suite.testFarmhashSharding("za", 7)
 	suite.testFarmhashSharding("i", 8)
 	suite.testFarmhashSharding("b", 9)
+}
+
+func (suite *VShardTestSuite) TestXXH64Sharding() {
+	suite.testXXH64Sharding("x", 0)
+	suite.testXXH64Sharding("h", 1)
+	suite.testXXH64Sharding("f", 2)
+	suite.testXXH64Sharding("za", 3)
+	suite.testXXH64Sharding("s", 4)
+	suite.testXXH64Sharding("5", 5)
+	suite.testXXH64Sharding("y", 6)
+	suite.testXXH64Sharding("i", 7)
+	suite.testXXH64Sharding("a", 8)
+	suite.testXXH64Sharding("xz", 9)
 }
 
 func TestVShardTestSuite(t *testing.T) {
@@ -183,6 +219,24 @@ func BenchmarkGetKeyMappingFarmhash(b *testing.B) {
 	}
 }
 
+func BenchmarkGetKeyMappingXXH64(b *testing.B) {
+	servers := []string{"0"}
+	pool := Pool{
+		Servers:         servers,
+		ServerStrategy:  XXH64ShardServerStrategy,
+		HashKeyStrategy: NoKeyStrategy,
+		numServers:      len(servers),
+	}
+	keys := []string{"0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
+		"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z",
+		"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"}
+
+	// run the Fib function b.N times
+	for n := 0; n < b.N; n++ {
+		_ = pool.GetKeyMapping(keys...)
+	}
+}
+
 func BenchmarkShardedServerStrategyMD5(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		_ = MD5ShardServerStrategy("a", 10)
@@ -192,5 +246,11 @@ func BenchmarkShardedServerStrategyMD5(b *testing.B) {
 func BenchmarkShardedServerStrategyFarmHash(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		_ = FarmhashShardServerStrategy("a", 10)
+	}
+}
+
+func BenchmarkShardedServerStrategyXXH64(b *testing.B) {
+	for n := 0; n < b.N; n++ {
+		_ = XXH64ShardServerStrategy("a", 10)
 	}
 }
